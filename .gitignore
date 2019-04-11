@@ -1,0 +1,13 @@
+go.sum
+
+.idea
+.vscode
+output
+main
+test
+unused
+upload/*
+vendor
+
+node_modules
+package-lock.json
