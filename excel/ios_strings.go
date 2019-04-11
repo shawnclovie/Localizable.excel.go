@@ -1,8 +1,6 @@
 package excel
 
 import (
-	"encoding/json"
-	"io/ioutil"
 	"os"
 	"path"
 	"strings"
