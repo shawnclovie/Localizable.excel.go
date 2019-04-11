@@ -27,7 +27,7 @@ Resources/ja.lproj/Localizable.strings
 home.title="テキストエディタ"
 ```
 
-* $go run main.go export_i18n excel.xlsx
+* $go run main.go export_json excel.xlsx
 ```
 Resources/Localizable_en.json
 {"home.title":"Text Editor","home.footer":"Copyright"}

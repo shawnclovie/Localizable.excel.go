@@ -7,7 +7,7 @@ func main() {
 	args := os.Args[1:]
 	argc := len(args)
 	if argc < 2 {
-		print("usage: ", os.Args[0], " <export_ios|export_i18n> <xlsx_file_name on current directory>")
+		print("usage: ", os.Args[0], " <export_ios|export_json> <xlsx_file_name on current directory>")
 		return
 	}
 	projDir, err := os.Getwd()
@@ -21,9 +21,9 @@ func main() {
 	panicIfNotNull(err)
 	switch action {
 	case "export_ios":
-		panicIfNotNull(excel.ExportIOSStrings(docs, projDir))
-	case "export_i18n":
-		panicIfNotNull(excel.ExportI18n(docs, projDir))
+		panicIfNotNull(excel.ExportDocumentsAsIOSStrings(docs, projDir))
+	case "export_json":
+		panicIfNotNull(excel.ExportDocumentsAsJSON(docs, projDir))
 	default:
 		panic("undefined operation")
 	}
@@ -31,6 +31,7 @@ func main() {
 
 func panicIfNotNull(err error) {
 	if err != nil {
+		println(err.Error())
 		panic(err)
 	}
 }
