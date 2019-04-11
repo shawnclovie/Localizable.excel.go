@@ -20,10 +20,21 @@ It would rendered to -
 * $go run main.go export_ios excel.xlsx
 ```
 Resources/en.lproj/Localizable.strings
+home.title="Text Editor"
+home.footer="Copyright"
+
 Resources/ja.lproj/Localizable.strings
+home.title="テキストエディタ"
 ```
+
 * $go run main.go export_i18n excel.xlsx
 ```
 Resources/Localizable_en.json
+{"home.title":"Text Editor","home.footer":"Copyright"}
 Resources/Localizable_ja.json
+{"home.title":"テキストエディタ","home.footer":"Copyright"}
 ```
+
+## Dependence
+
+* github.com/tealeg/xlsx
