@@ -21,6 +21,7 @@ func main() {
 	panicIfNotNull(err)
 	switch action {
 	case "export_ios":
+		println(action, len(docs.Documents), "Sheet(s)", "to", projDir)
 		panicIfNotNull(excel.ExportDocumentsAsIOSStrings(docs, projDir))
 	case "export_json":
 		panicIfNotNull(excel.ExportDocumentsAsJSON(docs, projDir))

@@ -20,6 +20,9 @@ type Document struct {
 func (d *Document) SetKeys(keys []string) {
 	d.KeyNames = keys
 	d.keysMap = make(map[uint32]int, len(keys))
+	for i, key := range keys {
+		d.keysMap[hash(key)] = i
+	}
 }
 
 func (d *Document) prepareTranslations() {
@@ -32,17 +35,6 @@ func hash(s string) uint32 {
 	h := fnv.New32a()
 	h.Write([]byte(s))
 	return h.Sum32()
-}
-
-func (d *Document) StringMapForLanguage(lang string) map[string]string {
-	m := make(map[string]string, len(d.KeyNames))
-	for _, key := range d.KeyNames {
-		v, found := d.StringForLanguageAndKey(lang, key)
-		if found {
-			m[key] = v
-		}
-	}
-	return m
 }
 
 func (d *Document) StringsForLanguage(lang string) []string {
