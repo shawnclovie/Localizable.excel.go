@@ -1,6 +1,7 @@
 package excel
 
 import (
+	"fmt"
 	"github.com/tealeg/xlsx"
 	"strings"
 )
@@ -11,7 +12,7 @@ func LoadExcelFromFile(path string) (*Documents, error) {
 		return nil, err
 	}
 	docs := &Documents{Path: path}
-	for _, sheet := range xls.Sheets {
+	for sheetIndex, sheet := range xls.Sheets {
 		if sheet.MaxCol <= 1 || sheet.MaxRow <= 1 {
 			continue
 		}
@@ -20,28 +21,32 @@ func LoadExcelFromFile(path string) (*Documents, error) {
 			continue
 		}
 		row0 := sheet.Rows[0]
+		cellCount := len(row0.Cells)
+		if cellCount != sheet.MaxCol {
+			fmt.Printf("sheet(%v) count of row0.Cells(%v) != %v\n", sheetIndex, cellCount, sheet.MaxCol)
+		}
 		doc := &Document{Name: sheet.Name, Path: names[0], File: names[1]}
-		doc.LanguageNames = make([]string, len(row0.Cells) - 1)
+		doc.LanguageNames = make([]string, len(row0.Cells)-1)
 		for index, cell := range row0.Cells {
 			if index > 0 {
-				doc.LanguageNames[index - 1] = cell.Value
+				doc.LanguageNames[index-1] = cell.Value
 			}
 		}
 		keyCount := sheet.MaxRow - 1
 		keys := make([]string, keyCount)
 		for i := 0; i < sheet.MaxRow; i += 1 {
 			if i > 0 {
-				keys[i - 1] = sheet.Cell(i, 0).Value
+				keys[i-1] = sheet.Cell(i, 0).Value
 			}
 		}
 		doc.SetKeys(keys)
 
 		for ci := 1; ci < sheet.MaxCol; ci += 1 {
-			lang := doc.LanguageNames[ci - 1]
+			lang := doc.LanguageNames[ci-1]
 			values := make([]string, keyCount)
 			for ri := 1; ri < sheet.MaxRow; ri += 1 {
 				cell := sheet.Cell(ri, ci)
-				values[ri - 1] = cell.Value
+				values[ri-1] = cell.Value
 			}
 			doc.set(lang, values)
 		}
