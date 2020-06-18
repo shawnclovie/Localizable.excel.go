@@ -16,8 +16,6 @@ Each argument separate with & or new line.
 
 * Other cells on column[0] should be strings key, what you typed in code - NSLocalizableString("StringKey", comment: nil).
 
-* Cells on column[1] is primary language, it should be fully filled.
-
 |path=Resources/Localizable&format=ios_strings|en|ja|
 |-|-|-|
 |home.title|Text Editor|テキストエディタ|
@@ -30,22 +28,27 @@ $ go run main.go export excel.xlsx
 ```
 
 * format=ios_strings
-```
-Resources/en.lproj/Localizable.strings
-home.title="Text Editor"
-home.footer="Copyright"
-
-Resources/ja.lproj/Localizable.strings
-home.title="テキストエディタ"
-```
+	* Resources/en.lproj/Localizable.strings
+	```
+	home.title="Text Editor"
+	home.footer="Copyright"
+	```
+	* Resources/ja.lproj/Localizable.strings
+	```
+	home.title="テキストエディタ"
+	```
 
 * format=json
-```
-Resources/Localizable_en.json
-{"home.title":"Text Editor","home.footer":"Copyright"}
-Resources/Localizable_ja.json
-{"home.title":"テキストエディタ","home.footer":"Copyright"}
-```
+	* Resources/Localizable.json
+	```
+	{
+		"keys":["home.title","home.footer"],
+		"text":{
+			"en":["Text Editor","Copyright"],
+			"ja":["テキストエディタ",""]
+		}
+	}
+	```
 
 ## Dependence
 
