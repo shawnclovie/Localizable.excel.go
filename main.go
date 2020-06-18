@@ -1,7 +1,12 @@
 package main
 
-import "os"
-import "github.com/shawnclovie/Localizable.excel.go/excel"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/shawnclovie/Localizable.excel.go/excel"
+)
 
 func main() {
 	args := os.Args[1:]
@@ -10,21 +15,23 @@ func main() {
 		print("usage: ", os.Args[0], " <export_ios|export_json> <xlsx_file_name on current directory>")
 		return
 	}
-	projDir, err := os.Getwd()
-	panicIfNotNull(err)
 
 	action := args[0]
 	filename := args[1]
-	excelPath := projDir + "/" + filename
+	excelPath := filename
+	if !strings.HasPrefix(filename, "/") {
+		cwd, err := os.Getwd()
+		panicIfNotNull(err)
+		excelPath = cwd + "/" + filename
+	}
 
-	docs, err := excel.LoadExcelFromFile(excelPath)
+	docs, err := excel.LoadExcelDocumentsFromFile(excelPath)
 	panicIfNotNull(err)
 	switch action {
-	case "export_ios":
-		println(action, len(docs.Documents), "Sheet(s)", "to", projDir)
-		panicIfNotNull(excel.ExportDocumentsAsIOSStrings(docs, projDir))
-	case "export_json":
-		panicIfNotNull(excel.ExportDocumentsAsJSON(docs, projDir))
+	case "export":
+		exportDir := filepath.Dir(excelPath)
+		println(action, len(docs.Documents), "Sheet(s)", "to", exportDir)
+		panicIfNotNull(docs.Export(exportDir))
 	default:
 		panic("undefined operation")
 	}
