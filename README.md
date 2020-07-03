@@ -1,6 +1,9 @@
 A [go](http://www.golang.org) (or 'golang' for search engine friendliness) implementation of localize strings render tool.
 
-Edit text in Excel and export to iOS strings or json.
+Edit text in Excel and export to:
+- iOS **strings**
+- Key sorted **json**
+- Flutter **arb** json for intl_localization
 
 ## Structure of Excel
 Each work sheet is a Localizabe.strings group:
@@ -8,7 +11,7 @@ Each work sheet is a Localizabe.strings group:
 * Cell[0,0] should be -
 ```
 path={PathToSaving}/{LocalizableFileName}
-format=json|ios_strings
+format=ios_strings|json|arb
 ```
 Each argument separate with & or new line.
 
@@ -48,6 +51,15 @@ $ go run main.go export excel.xlsx
 			"ja":["テキストエディタ",""]
 		}
 	}
+	```
+* format=arb
+	* Resources/Localizabe_en.arb
+	```
+	{"home.title":"Text Editor","home.footer":"Copyright"}
+	```
+	* Resources/Localizabe_ja.arb
+	```
+	{"home.title":"テキストエディタ"}
 	```
 
 ## Dependence

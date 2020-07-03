@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/tealeg/xlsx"
@@ -17,6 +18,9 @@ const (
 	exportFormatJSON       = "json"
 	exportFormatIOSStrings = "ios_strings"
 	exportFormatAndroidXML = "android_xml"
+	exportFormatARB = "arb"
+
+	exportFileMode os.FileMode = 0644
 )
 
 func IsExportFormatValid(f string) bool {
@@ -39,6 +43,8 @@ func (docs *Documents) Export(basepath string) (err error) {
 			err = doc.exportAsJSON(basepath)
 		case exportFormatIOSStrings:
 			err = doc.exportAsIOSStrings(basepath)
+		case exportFormatARB:
+			err = doc.exportAsARB(basepath)
 		case exportFormatAndroidXML:
 			err = fmt.Errorf("not support %v yet", doc.Format)
 		default:
@@ -73,9 +79,6 @@ func LoadExcelDocumentsFromFile(path string) (*Documents, error) {
 		doc := &Document{Name: sheet.Name, Path: meta.Get("path"), Format: meta.Get("format")}
 		if doc.Path == "" {
 			return nil, fmt.Errorf("sheet(%v) no path defined in meta", sheetIndex)
-		}
-		if !IsExportFormatValid(doc.Format) {
-			return nil, fmt.Errorf("sheet(%v) no valid format defined in meta (current is '%s')", sheetIndex, doc.Format)
 		}
 		doc.LanguageNames = make([]string, len(row0.Cells)-1)
 		for index, cell := range row0.Cells {
@@ -175,7 +178,7 @@ func (d *Document) pathComponents() (dir string, file string) {
 func (doc *Document) exportAsIOSStrings(basepath string) error {
 	for _, lang := range doc.LanguageNames {
 		dir, file := doc.pathComponents()
-		stringsPath := basepath + "/" + dir + "/" + lang + ".lproj/" + file + ".strings"
+		stringsPath := filepath.Join(basepath, dir, lang + ".lproj", file + ".strings")
 		translations := doc.stringMapForLanguage(lang)
 		if len(translations) == 0 {
 			println("translations for", lang, "is empty.")
@@ -201,7 +204,7 @@ func (doc *Document) exportAsIOSStrings(basepath string) error {
 				break
 			}
 		}
-		err = ioutil.WriteFile(stringsPath, []byte(content.String()), 0666)
+		err = ioutil.WriteFile(stringsPath, []byte(content.String()), exportFileMode)
 		if err != nil {
 			return err
 		}
@@ -240,7 +243,54 @@ func (doc *Document) exportAsJSON(basepath string) error {
 	if err != nil {
 		return err
 	}
-	exportPath := dir + "/" + file + ".json"
+	exportPath := filepath.Join(dir, file + ".json")
 	println("writing document", doc.Name, "(", len(doc.KeyNames), "keys) to\n", exportPath)
-	return ioutil.WriteFile(exportPath, bs, 0666)
+	return ioutil.WriteFile(exportPath, bs, exportFileMode)
+}
+
+func (doc *Document) exportAsARB(basepath string) error {
+	for _, lang := range doc.LanguageNames {
+		dir, file := doc.pathComponents()
+		docPath := filepath.Join(basepath, dir, file + "_" + lang + ".arb")
+		translations := doc.stringMapForLanguage(lang)
+		if len(translations) == 0 {
+			println("translations for", lang, "is empty.")
+			continue
+		}
+		println("writing document", doc.Name, "(", len(doc.KeyNames), "keys) to\n", docPath)
+		docDir := path.Dir(docPath)
+		if _, err := os.Stat(docDir); os.IsNotExist(err) {
+			os.MkdirAll(docDir, 0700)
+		}
+		var err error
+		content := map[string]interface{}{
+			"@@locale": lang,
+		}
+		for _, key := range doc.KeyNames {
+			text := translations[key]
+			if text != "" {
+				content[key] = text
+			}
+		}
+		bs, err := json.Marshal(content)
+		if err != nil {
+			return err
+		}
+		err = ioutil.WriteFile(docPath, bs, exportFileMode)
+		if err != nil {
+			return err
+		}
+		listPath := filepath.Join(basepath, dir, file + ".arb")
+		bs, err = json.Marshal(map[string]interface{}{
+			"locales": doc.LanguageNames,
+		})
+		if err != nil {
+			return err
+		}
+		err = ioutil.WriteFile(listPath, bs, exportFileMode)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
