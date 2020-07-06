@@ -236,10 +236,10 @@ func (doc *Document) exportAsJSON(basepath string) error {
 			translations[lang] = m
 		}
 	}
-	bs, err := json.Marshal(map[string]interface{}{
+	bs, err := json.MarshalIndent(map[string]interface{}{
 		"keys": doc.KeyNames,
 		"text": translations,
-	})
+	}, "", "")
 	if err != nil {
 		return err
 	}
@@ -272,7 +272,7 @@ func (doc *Document) exportAsARB(basepath string) error {
 				content[key] = text
 			}
 		}
-		bs, err := json.Marshal(content)
+		bs, err := json.MarshalIndent(content, "", "")
 		if err != nil {
 			return err
 		}
