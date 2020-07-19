@@ -2,6 +2,7 @@ package excel
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
@@ -15,17 +16,17 @@ import (
 )
 
 const (
-	exportFormatJSON       = "json"
-	exportFormatIOSStrings = "ios_strings"
-	exportFormatAndroidXML = "android_xml"
-	exportFormatARB = "arb"
+	exportFormatJSON    = "json"
+	exportFormatIOS     = "ios"
+	exportFormatAndroid = "android"
+	exportFormatARB     = "arb"
 
 	exportFileMode os.FileMode = 0644
 )
 
 func IsExportFormatValid(f string) bool {
 	switch strings.ToLower(f) {
-	case exportFormatJSON, exportFormatIOSStrings:
+	case exportFormatJSON, exportFormatIOS:
 		return true
 	}
 	return false
@@ -41,12 +42,12 @@ func (docs *Documents) Export(basepath string) (err error) {
 		switch doc.Format {
 		case exportFormatJSON:
 			err = doc.exportAsJSON(basepath)
-		case exportFormatIOSStrings:
+		case exportFormatIOS:
 			err = doc.exportAsIOSStrings(basepath)
 		case exportFormatARB:
 			err = doc.exportAsARB(basepath)
-		case exportFormatAndroidXML:
-			err = fmt.Errorf("not support %v yet", doc.Format)
+		case exportFormatAndroid:
+			err = doc.exportAsAndroidStrings(basepath)
 		default:
 			err = fmt.Errorf("invalid format %v", doc.Format)
 		}
@@ -178,7 +179,7 @@ func (d *Document) pathComponents() (dir string, file string) {
 func (doc *Document) exportAsIOSStrings(basepath string) error {
 	for _, lang := range doc.LanguageNames {
 		dir, file := doc.pathComponents()
-		stringsPath := filepath.Join(basepath, dir, lang + ".lproj", file + ".strings")
+		stringsPath := filepath.Join(basepath, dir, lang+".lproj", file+".strings")
 		translations := doc.stringMapForLanguage(lang)
 		if len(translations) == 0 {
 			println("translations for", lang, "is empty.")
@@ -223,6 +224,52 @@ func (doc *Document) stringMapForLanguage(lang string) map[string]string {
 	return m
 }
 
+type androidStrings struct {
+	XMLName xml.Name `xml:"resources"`
+	Items []androidStringsItem
+}
+
+type androidStringsItem struct {
+	XMLName xml.Name `xml:"string"`
+	Name string `xml:"name,attr"`
+	Value string `xml:",innerxml"`
+}
+
+func (doc *Document) exportAsAndroidStrings(basepath string) error {
+	for _, lang := range doc.LanguageNames {
+		subdir := "values"
+		if lang != "" {
+			subdir += "-" + lang
+		}
+		stringsPath := filepath.Join(basepath, doc.Path, subdir, "strings.xml")
+		translations := doc.stringMapForLanguage(lang)
+		if len(translations) == 0 {
+			println("translations for", lang, "is empty.")
+			continue
+		}
+		println("writing document", doc.Name, "(", len(doc.KeyNames), "keys) to\n", stringsPath)
+		dir := path.Dir(stringsPath)
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			os.MkdirAll(dir, 0700)
+		}
+		var it androidStrings
+		for _, key := range doc.KeyNames {
+			text := translations[key]
+			it.Items = append(it.Items, androidStringsItem{Name: key, Value: text})
+		}
+		bs, err := xml.MarshalIndent(it, "", "\t")
+		if err != nil {
+			return err
+		}
+		bs = append([]byte(xml.Header), bs...)
+		err = ioutil.WriteFile(stringsPath, bs, exportFileMode)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (doc *Document) exportAsJSON(basepath string) error {
 	dir, file := doc.pathComponents()
 	dir = basepath + "/" + dir
@@ -243,7 +290,7 @@ func (doc *Document) exportAsJSON(basepath string) error {
 	if err != nil {
 		return err
 	}
-	exportPath := filepath.Join(dir, file + ".json")
+	exportPath := filepath.Join(dir, file+".json")
 	println("writing document", doc.Name, "(", len(doc.KeyNames), "keys) to\n", exportPath)
 	return ioutil.WriteFile(exportPath, bs, exportFileMode)
 }
@@ -251,7 +298,7 @@ func (doc *Document) exportAsJSON(basepath string) error {
 func (doc *Document) exportAsARB(basepath string) error {
 	for _, lang := range doc.LanguageNames {
 		dir, file := doc.pathComponents()
-		docPath := filepath.Join(basepath, dir, file + "_" + lang + ".arb")
+		docPath := filepath.Join(basepath, dir, file+"_"+lang+".arb")
 		translations := doc.stringMapForLanguage(lang)
 		if len(translations) == 0 {
 			println("translations for", lang, "is empty.")
@@ -280,7 +327,7 @@ func (doc *Document) exportAsARB(basepath string) error {
 		if err != nil {
 			return err
 		}
-		listPath := filepath.Join(basepath, dir, file + ".arb")
+		listPath := filepath.Join(basepath, dir, file+".arb")
 		bs, err = json.Marshal(map[string]interface{}{
 			"locales": doc.LanguageNames,
 		})
