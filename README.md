@@ -52,15 +52,20 @@ Each argument separate with & or new line.
 $ go run main.go
 ```
 
-## Convert
+## New formatted JSON / formatted YAML / xlsx
 ```
-$ go run main.go <json|yaml|xlsx> <json|yaml|xlsx> <input file>
+$ go run main.go new <file>
+```
+
+## Convert between formatted JSON / formatted YAML / xlsx
+```
+$ go run main.go convert <input file> <output file>
 ```
 
 ## Export
 * Command
 ```
-$ go run main.go <json|yaml|xlsx> export <input file> <export dir>
+$ go run main.go export <input file> <export dir>
 ```
 
 * format=ios
