@@ -1,6 +1,7 @@
 package excel
 
 import (
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -12,7 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/shawnclovie/Localizable.excel.go/utility"
 	"github.com/tealeg/xlsx"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -24,21 +27,29 @@ const (
 	exportFileMode os.FileMode = 0644
 )
 
-func IsExportFormatValid(f string) bool {
-	switch strings.ToLower(f) {
-	case exportFormatJSON, exportFormatIOS:
-		return true
-	}
-	return false
-}
-
 type Documents struct {
 	Path      string
-	Documents []*Document
+	Documents []Document
+}
+
+func NewDocument(languages, docNames []string) (docs Documents) {
+	for _, name := range docNames {
+		d := Document{
+			Name:          name,
+			LanguageNames: languages,
+			KeyNames:      []string{"first_key"},
+		}
+		for _, lang := range languages {
+			d.set(lang, []string{""})
+		}
+		docs.Documents = append(docs.Documents, d)
+	}
+	return
 }
 
 func (docs *Documents) Export(basepath string) (err error) {
 	for i, doc := range docs.Documents {
+		doc.prepareKeysMap()
 		switch doc.Format {
 		case exportFormatJSON:
 			err = doc.exportAsJSON(basepath)
@@ -58,28 +69,112 @@ func (docs *Documents) Export(basepath string) (err error) {
 	return nil
 }
 
-func LoadExcelDocumentsFromFile(path string) (*Documents, error) {
+func (docs Documents) ToJSONData() (bs []byte, err error) {
+	result := make([]interface{}, len(docs.Documents))
+	for j, doc := range docs.Documents {
+		result[j] = doc.toMap()
+	}
+	return json.MarshalIndent(result, "", "  ")
+}
+
+func (docs Documents) ToYAMLData() (bs []byte, err error) {
+	result := make([]interface{}, len(docs.Documents))
+	for j, doc := range docs.Documents {
+		result[j] = doc.toMap()
+	}
+	return yaml.Marshal(result)
+}
+
+func (docs Documents) ToExcelData() (bs []byte, err error) {
+	xls := xlsx.NewFile()
+	tdStyle := xlsx.NewStyle()
+	tdStyle.Font.Name = "Consolas"
+	tdStyle.Font.Size = 10
+	thStyle := xlsx.NewStyle()
+	thStyle.Font.Bold = true
+	thStyle.Font.Name = tdStyle.Font.Name
+	thStyle.Font.Size = tdStyle.Font.Size
+	for _, doc := range docs.Documents {
+		sheet, sheetErr := xls.AddSheet(doc.Name)
+		if sheetErr != nil {
+			err = sheetErr
+			return
+		}
+		setExcelCell(sheet.Cell(0, 0), fmt.Sprintf("path=%s&format=%s", doc.Path, doc.Format), tdStyle)
+		for i, lang := range doc.LanguageNames {
+			setExcelCell(sheet.Cell(0, i+1), lang, thStyle)
+		}
+		for i, key := range doc.KeyNames {
+			setExcelCell(sheet.Cell(i+1, 0), key, thStyle)
+		}
+		for i, lang := range doc.LanguageNames {
+			trans := doc.Translations[lang]
+			for j, tran := range trans {
+				setExcelCell(sheet.Cell(j+1, i+1), tran, tdStyle)
+			}
+		}
+		sheet.SetColWidth(0, len(doc.LanguageNames), 24)
+	}
+	var buf bytes.Buffer
+	err = xls.Write(&buf)
+	bs = buf.Bytes()
+	return
+}
+
+func setExcelCell(cell *xlsx.Cell, content string, style *xlsx.Style) {
+	cell.SetString(content)
+	cell.SetStyle(style)
+}
+
+func LoadDocumentsFromFile(path string) (docs Documents, err error) {
+	bs, err := ioutil.ReadFile(path)
+	if err != nil {
+		return
+	}
+	var maps []map[string]interface{}
+	ext := strings.ToLower(filepath.Ext(path))
+	switch ext {
+	case ".yaml":
+		err = yaml.Unmarshal(bs, &maps)
+	case ".json":
+		err = json.Unmarshal(bs, &maps)
+	default:
+		err = fmt.Errorf("unknown extension: %v", ext)
+	}
+	if err != nil {
+		return
+	}
+	for _, m := range maps {
+		d := parseDocumentFromMap(m)
+		docs.Documents = append(docs.Documents, d)
+	}
+	return
+}
+
+func LoadDocumentsFromExcelFile(path string) (docs Documents, err error) {
 	xls, err := xlsx.OpenFile(path)
 	if err != nil {
-		return nil, err
+		return
 	}
-	docs := &Documents{Path: path}
+	docs.Path = path
 	for sheetIndex, sheet := range xls.Sheets {
 		if sheet.MaxCol <= 1 || sheet.MaxRow <= 1 {
 			continue
 		}
-		meta, err := url.ParseQuery(strings.ReplaceAll(sheet.Cell(0, 0).Value, "\n", "&"))
-		if err != nil {
-			return nil, fmt.Errorf("sheet(%v) meta cell (0,0) parse failed %w", sheetIndex, err)
+		meta, queryErr := url.ParseQuery(strings.ReplaceAll(sheet.Cell(0, 0).Value, "\n", "&"))
+		if queryErr != nil {
+			err = fmt.Errorf("sheet(%v) meta cell (0,0) parse failed %w", sheetIndex, queryErr)
+			return
 		}
 		row0 := sheet.Rows[0]
 		cellCount := len(row0.Cells)
 		if cellCount != sheet.MaxCol {
 			fmt.Printf("sheet(%v) count of row0.Cells(%v) != %v\n", sheetIndex, cellCount, sheet.MaxCol)
 		}
-		doc := &Document{Name: sheet.Name, Path: meta.Get("path"), Format: meta.Get("format")}
+		doc := Document{Name: sheet.Name, Path: meta.Get("path"), Format: meta.Get("format")}
 		if doc.Path == "" {
-			return nil, fmt.Errorf("sheet(%v) no path defined in meta", sheetIndex)
+			err = fmt.Errorf("sheet(%v) no path defined in meta", sheetIndex)
+			return
 		}
 		doc.LanguageNames = make([]string, len(row0.Cells)-1)
 		for index, cell := range row0.Cells {
@@ -94,7 +189,7 @@ func LoadExcelDocumentsFromFile(path string) (*Documents, error) {
 				keys[i-1] = sheet.Cell(i, 0).Value
 			}
 		}
-		doc.SetKeys(keys)
+		doc.KeyNames = keys
 
 		for ci := 1; ci < sheet.MaxCol; ci += 1 {
 			lang := doc.LanguageNames[ci-1]
@@ -107,7 +202,7 @@ func LoadExcelDocumentsFromFile(path string) (*Documents, error) {
 		}
 		docs.Documents = append(docs.Documents, doc)
 	}
-	return docs, nil
+	return
 }
 
 type Document struct {
@@ -116,21 +211,55 @@ type Document struct {
 	Format        string
 	LanguageNames []string
 	KeyNames      []string
-	keysMap       map[uint32]int
-	translations  map[string][]string
+	Translations  map[string][]string
+
+	keysMap map[uint32]int
 }
 
-func (d *Document) SetKeys(keys []string) {
-	d.KeyNames = keys
-	d.keysMap = make(map[uint32]int, len(keys))
-	for i, key := range keys {
-		d.keysMap[hash(key)] = i
+func parseDocumentFromMap(encoded map[string]interface{}) (d Document) {
+	d.Name = utility.AnyToString(encoded["name"])
+	d.Path = utility.AnyToString(encoded["path"])
+	d.Format = utility.AnyToString(encoded["format"])
+	d.LanguageNames = utility.AnyToStringArray(encoded["language_names"])
+	d.Translations = make(map[string][]string)
+	lines := encoded["translations"].([]interface{})
+	d.KeyNames = make([]string, len(lines))
+	for j, it := range lines {
+		line := utility.AnyToStringArray(it)
+		d.KeyNames[j] = line[0]
+		for i, lang := range d.LanguageNames {
+			if d.Translations[lang] == nil {
+				d.Translations[lang] = make([]string, len(lines))
+			}
+			d.Translations[lang][j] = line[i+1]
+		}
+	}
+	return
+}
+
+func (d Document) toMap() map[string]interface{} {
+	trans := make([][]string, len(d.KeyNames))
+	for j, key := range d.KeyNames {
+		line := make([]string, 1, len(d.LanguageNames)+1)
+		line[0] = key
+		for _, lang := range d.LanguageNames {
+			line = append(line, d.Translations[lang][j])
+		}
+		trans[j] = line
+	}
+	return map[string]interface{}{
+		"name":           d.Name,
+		"path":           d.Path,
+		"format":         d.Format,
+		"language_names": d.LanguageNames,
+		"translations":   trans,
 	}
 }
 
-func (d *Document) prepareTranslations() {
-	if d.translations == nil {
-		d.translations = make(map[string][]string, len(d.LanguageNames))
+func (d *Document) prepareKeysMap() {
+	d.keysMap = make(map[uint32]int, len(d.KeyNames))
+	for i, key := range d.KeyNames {
+		d.keysMap[hash(key)] = i
 	}
 }
 
@@ -141,7 +270,7 @@ func hash(s string) uint32 {
 }
 
 func (d *Document) StringsForLanguage(lang string) []string {
-	return d.translations[lang]
+	return d.Translations[lang]
 }
 
 func (d *Document) StringForLanguageAndKey(lang, key string) (string, bool) {
@@ -149,7 +278,7 @@ func (d *Document) StringForLanguageAndKey(lang, key string) (string, bool) {
 	if !found {
 		return "", false
 	}
-	values, found := d.translations[lang]
+	values, found := d.Translations[lang]
 	if !found || len(values) < keyIndex {
 		return "", false
 	}
@@ -157,8 +286,10 @@ func (d *Document) StringForLanguageAndKey(lang, key string) (string, bool) {
 }
 
 func (d *Document) set(language string, values []string) {
-	d.prepareTranslations()
-	d.translations[language] = values
+	if d.Translations == nil {
+		d.Translations = make(map[string][]string, len(d.LanguageNames))
+	}
+	d.Translations[language] = values
 }
 
 func (d *Document) pathComponents() (dir string, file string) {
@@ -226,13 +357,13 @@ func (doc *Document) stringMapForLanguage(lang string) map[string]string {
 
 type androidStrings struct {
 	XMLName xml.Name `xml:"resources"`
-	Items []androidStringsItem
+	Items   []androidStringsItem
 }
 
 type androidStringsItem struct {
 	XMLName xml.Name `xml:"string"`
-	Name string `xml:"name,attr"`
-	Value string `xml:",innerxml"`
+	Name    string   `xml:"name,attr"`
+	Value   string   `xml:",innerxml"`
 }
 
 func (doc *Document) exportAsAndroidStrings(basepath string) error {
@@ -312,6 +443,7 @@ func (doc *Document) exportAsARB(basepath string) error {
 		var err error
 		content := map[string]interface{}{
 			"@@locale": lang,
+			// "@@last_modified": time.Now().UTC().Format(time.RFC3339),
 		}
 		for _, key := range doc.KeyNames {
 			text := translations[key]
