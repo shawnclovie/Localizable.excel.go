@@ -5,6 +5,13 @@ import (
 	"strconv"
 )
 
+func PanicIfNotNull(err error) {
+	if err != nil {
+		println(err.Error())
+		panic(err)
+	}
+}
+
 type StrMap = map[string]interface{}
 type AnyMap = map[interface{}]interface{}
 

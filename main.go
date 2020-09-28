@@ -9,10 +9,11 @@ import (
 	"strings"
 
 	"github.com/shawnclovie/Localizable.excel.go/excel"
+	"github.com/shawnclovie/Localizable.excel.go/utility"
 )
 
 const (
-	fromNew = "new"
+	fromNew    = "new"
 	formatXLSX = "xlsx"
 	formatJSON = "json"
 	formatYAML = "yaml"
@@ -26,65 +27,118 @@ func main() {
 		println("usage: ")
 		println(`
 New file:
- new <json|xlsx> <file> <languages, separate with ","> <doc names>
+ new <file> <languages, separate with ","> <doc names>
+- file should has extension json | yaml | xlsx.
+
 Export:
- <json|xlsx> export <input file> <export dir>
-Convert:
- xlsx json <input file> [output file]
- json xlsx <input file> [output file]
+ export <input file> <export dir>
+
+Convert input file to target format:
+ convert <input file> <output file>
 `)
 		return
 	}
 	fmt.Println("args:", args)
 
-	from := strings.TrimSpace(args[0])
-	action := strings.TrimSpace(args[1])
-	if from == action {
-		println("1st and 2nd arguments should not equal.")
-		os.Exit(1)
+	var act action
+	switch strings.ToLower(strings.TrimSpace(args[0])) {
+	case "new":
+		langs := strings.Split(args[2], ",")
+		docNames := strings.Split(args[3], ",")
+		act = newDocsAction{
+			targetFile: args[1],
+			docs:       excel.NewDocument(langs, docNames),
+		}
+	case "export":
+		src := args[1]
+		act = exportAction{
+			sourceFile: src,
+			exportDir:  args[2],
+			docs:       readDocuments(src),
+		}
+	case "convert":
+		src := args[1]
+		act = convertAction{
+			sourceFile: src,
+			targetFile: args[2],
+			docs:       readDocuments(src),
+		}
 	}
-	filename := args[2]
-	inputPath := filename
-	if !strings.HasPrefix(filename, "/") {
-		cwd, err := os.Getwd()
-		panicIfNotNull(err)
-		inputPath = cwd + "/" + filename
-	}
+	act.invoke()
+	println("done")
+}
 
-	var docs excel.Documents
+type action interface {
+	invoke()
+}
+
+type newDocsAction struct {
+	targetFile string
+
+	docs excel.Documents
+}
+
+func (act newDocsAction) invoke() {
+	convertAction{
+		targetFile: act.targetFile,
+		docs:       act.docs,
+	}.invoke()
+}
+
+type exportAction struct {
+	sourceFile string
+	exportDir  string
+
+	docs excel.Documents
+}
+
+func (act exportAction) invoke() {
+	println("export", len(act.docs.Documents), "Sheet(s)", "to", act.exportDir)
+	utility.PanicIfNotNull(act.docs.Export(act.exportDir))
+}
+
+type convertAction struct {
+	sourceFile string
+	targetFile string
+
+	docs excel.Documents
+}
+
+func (act convertAction) invoke() {
+	writeDocumentsToFile(act.docs, act.targetFile)
+}
+
+func readDocuments(src string) (docs excel.Documents) {
+	if _, err := os.Stat(src); err != nil {
+		utility.PanicIfNotNull(err)
+	}
+	inputExt := filepath.Ext(src)
+	if inputExt == "" {
+		panic(fmt.Errorf("input file should has suffix: %s", src))
+	}
+	inputExt = strings.ToLower(inputExt[1:])
 	var err error
-	var savePath string
-	switch from {
+	switch inputExt {
 	case formatXLSX:
-		docs, err = excel.LoadDocumentsFromExcelFile(inputPath)
+		docs, err = excel.LoadDocumentsFromExcelFile(src)
 	case formatJSON, formatYAML:
-		docs, err = excel.LoadDocumentsFromFile(inputPath)
-	case fromNew:
-		langs := strings.Split(args[3], ",")
-		docNames := strings.Split(args[4], ",")
-		docs = excel.NewDocument(langs, docNames)
-		savePath = inputPath
+		docs, err = excel.LoadDocumentsFromFile(src)
 	default:
 		err = errors.New("undefined operation")
 	}
-	panicIfNotNull(err)
-	if action == actionExport {
-		exportDir := args[3]
-		println(from, action, len(docs.Documents), "Sheet(s)", "to", exportDir)
-		panicIfNotNull(docs.Export(exportDir))
-		return
+	utility.PanicIfNotNull(err)
+	return
+}
+
+func writeDocumentsToFile(docs excel.Documents, tar string) {
+	ext := filepath.Ext(tar)
+	if ext == "" {
+		panic(fmt.Errorf("target file (%v) should has valid extension", tar))
 	}
-	if savePath == "" {
-		if len(args) > 3 {
-			savePath = args[3]
-		} else {
-			ext := filepath.Ext(inputPath)
-			savePath = inputPath[:len(inputPath)-len(ext)] + "." + action
-		}
-	}
-	print("convert (", from, ")\n", inputPath, "\nto (", action, ")\n", savePath, "\n")
+	ext = ext[1:]
 	var bs []byte
-	switch action {
+	var err error
+	switch ext {
 	case formatJSON:
 		bs, err = docs.ToJSONData()
 	case formatYAML:
@@ -92,19 +146,9 @@ Convert:
 	case formatXLSX:
 		bs, err = docs.ToExcelData()
 	default:
-		fmt.Println(docs)
 		err = errors.New("undefined operation")
 	}
-	panicIfNotNull(err)
-
-	err = ioutil.WriteFile(savePath, bs, 0644)
-	panicIfNotNull(err)
-	println("done")
-}
-
-func panicIfNotNull(err error) {
-	if err != nil {
-		println(err.Error())
-		panic(err)
-	}
+	utility.PanicIfNotNull(err)
+	err = ioutil.WriteFile(tar, bs, 0644)
+	utility.PanicIfNotNull(err)
 }
